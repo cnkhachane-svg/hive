@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  passwordHash   String
+  role           String          @default("USER") // "USER", "STORE_OWNER", "ADMIN"
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  preferences    UserPreferences?
+  stores         Store[]         @relation("OwnerStores")
+  shoppingLists  ShoppingList[]
+  savedProducts  SavedProduct[]
+  trustedStores  TrustedStore[]
+  feedback       PurchaseFeedback[]
+  comparisons    Comparison[]
+}
+
+model UserPreferences {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mainPriority      String   @default("COST") // "COST", "TIME", "CONVENIENCE", "AVAILABILITY", "TRUST", "DISTANCE"
+  urgency           String   @default("NOT_URGENT") // "NOT_URGENT", "FEW_HOURS", "RIGHT_NOW"
+  preferredRadiusKm Float    @default(3.0)
+  transportMode     String   @default("WALK") // "WALK", "BIKE", "CAR"
+  walkCostPerKm     Int      @default(0) // in paise
+  bikeCostPerKm     Int      @default(500) // in paise (₹5/km)
+  carCostPerKm      Int      @default(1200) // in paise (₹12/km)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Store {
+  id           String             @id @default(cuid())
+  name         String
+  ownerId      String?
+  owner        User?              @relation("OwnerStores", fields: [ownerId], references: [id])
+  address      String
+  locality     String             @default("Kothrud, Pune")
+  city         String             @default("Pune")
+  lat          Float
+  lng          Float
+  phone        String
+  openingHours String             @default("7:00 AM - 10:00 PM")
+  isOpen       Boolean            @default(true)
+  verified     Boolean            @default(false)
+  rating       Float              @default(4.5)
+  ratingCount  Int                @default(24)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  inventory    StoreInventory[]
+  trustedBy    TrustedStore[]
+  feedback     PurchaseFeedback[]
+  priceHistory PriceHistory[]
+}
+
+model ProductCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  icon      String    @default("ShoppingBag")
+  products  Product[]
+  createdAt DateTime  @default(now())
+}
+
+model Product {
+  id               String            @id @default(cuid())
+  name             String
+  brand            String
+  categoryId       String
+  category         ProductCategory   @relation(fields: [categoryId], references: [id])
+  standardQuantity String            // e.g. "1 kg", "1 litre", "400 g"
+  unit             String            // e.g. "kg", "litre", "g", "packet"
+  barcode          String?
+  imageUrl         String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  storeInventory   StoreInventory[]
+  onlineOffers     OnlineOffer[]
+  shoppingItems    ShoppingListItem[]
+  savedBy          SavedProduct[]
+  feedback         PurchaseFeedback[]
+  priceHistory     PriceHistory[]
+}
+
+model StoreInventory {
+  id            String    @id @default(cuid())
+  storeId       String
+  store         Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  pricePaise    Int       // Integer paise (e.g., 8200 = ₹82)
+  inStock       Boolean   @default(true)
+  stockQuantity Int       @default(25)
+  stockStatus   String    @default("IN_STOCK") // "IN_STOCK", "LIMITED_STOCK", "OUT_OF_STOCK"
+  discountPaise Int       @default(0) // Integer paise
+  lastUpdated   DateTime  @default(now())
+  source        String    @default("STORE_OWNER") // "STORE_OWNER", "VERIFIED_AUDIT", "DEMO_FEED"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([storeId, productId])
+}
+
+model OnlineOffer {
+  id               String   @id @default(cuid())
+  platform         String   // "Blinkit", "Zepto", "Instamart", "Amazon Fresh", "BigBasket"
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  pricePaise       Int      // Integer paise (e.g., 8000 = ₹80)
+  deliveryFeePaise Int      @default(2000) // Integer paise (e.g., ₹20)
+  serviceFeePaise  Int      @default(0)    // Integer paise
+  discountPaise    Int      @default(0)    // Integer paise
+  estimatedMinutes Int      @default(25)   // Delivery time in minutes
+  inStock          Boolean  @default(true)
+  lastUpdated      DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ShoppingList {
+  id        String             @id @default(cuid())
+  userId    String?
+  user      User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String             @default("My Smart Basket")
+  isSaved   Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  items     ShoppingListItem[]
+}
+
+model ShoppingListItem {
+  id             String       @id @default(cuid())
+  shoppingListId String
+  shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Int          @default(1)
+  selectedPlan   String       @default("AUTO") // "AUTO", "ONLINE", "LOCAL"
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([shoppingListId, productId])
+}
+
+model SavedProduct {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+model TrustedStore {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, storeId])
+}
+
+model Comparison {
+  id                 String   @id @default(cuid())
+  userId             String?
+  user               User?    @relation(fields: [userId], references: [id])
+  productId          String
+  recommendedSource  String   // "ONLINE", "KIRANA", "HYBRID"
+  calculationDetails String   // JSON string
+  createdAt          DateTime @default(now())
+}
+
+model PurchaseFeedback {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeId            String
+  store              Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId          String?
+  product            Product? @relation(fields: [productId], references: [id])
+  rating             Int      @default(5)
+  review             String?
+  actualSpentPaise   Int      // in paise
+  savedAmountPaise   Int      @default(0) // in paise
+  isVerifiedPurchase Boolean  @default(true)
+  createdAt          DateTime @default(now())
+}
+
+model PriceHistory {
+  id             String   @id @default(cuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storeId        String?
+  store          Store?   @relation(fields: [storeId], references: [id])
+  onlinePlatform String?
+  pricePaise     Int      // in paise
+  recordedAt     DateTime @default(now())
+}
